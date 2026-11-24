@@ -1,0 +1,33 @@
+# ── 编译产物（MRS/Eclipse 自动生成，每次编译都变）
+mrs/obj/
+*.o
+*.d
+*.elf
+*.hex
+*.lst
+*.map
+*.234r.expand
+
+# ── MRS / Eclipse 工作区状态（含本机绝对路径，换机器失效）
+.mrs/
+*.mrs-workspace
+
+# ── Windows 系统文件
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# ── Office 临时锁文件
+~$*
+
+# ── 采集的图像数据（体积大，不入库；需要时用 capture/recv_images.py 重新采集）
+dataset/
+capture/dataset/
+
+# ── 离线调试脚本的运行产物（产物一律用 _ 开头）
+__pycache__/
+capture/_*
+capture/logs/
+
+# ── 新采集的图集（2026-11-24 换镜头后采集，不入库）
+dataset_new/

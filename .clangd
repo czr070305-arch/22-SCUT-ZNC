@@ -1,0 +1,55 @@
+CompileFlags:
+  # 与 MRS 里 riscv-none-embed-gcc 的实际参数保持一致
+  Compiler: riscv-none-embed-gcc
+  Add:
+    # 目标架构, 必须和 MRS 编译参数一致
+    # 不加 --target 的话 clangd 会按 x86 解析, 导致 int/long 宽度不对
+    - --target=riscv32-unknown-elf
+    - -march=rv32imafc
+    - -mabi=ilp32f
+    - -std=gnu11
+    - -fsigned-char
+    # 工程源码
+    - -Id:/22届华工智能车/My_Project/01_project_first/code
+    - -Id:/22届华工智能车/My_Project/01_project_first/code/app
+    - -Id:/22届华工智能车/My_Project/01_project_first/code/hardware
+    - -Id:/22届华工智能车/My_Project/01_project_first/code/algorithm
+    - -Id:/22届华工智能车/My_Project/01_project_first/user/inc
+    # 逐飞库
+    - -Id:/22届华工智能车/My_Project/libraries/zf_common
+    - -Id:/22届华工智能车/My_Project/libraries/zf_components
+    - -Id:/22届华工智能车/My_Project/libraries/zf_device
+    - -Id:/22届华工智能车/My_Project/libraries/zf_driver
+    # WCH SDK
+    - -Id:/22届华工智能车/My_Project/libraries/sdk/Core
+    - -Id:/22届华工智能车/My_Project/libraries/sdk/Ld
+    - -Id:/22届华工智能车/My_Project/libraries/sdk/Peripheral
+    - -Id:/22届华工智能车/My_Project/libraries/sdk/Startup
+    - -Id:/22届华工智能车/My_Project/Libraries/doc
+    # 工具链系统头文件: newlib + gcc 内置
+    - -isystem
+    - "d:/appdownload/mounriverstudio/mounriver_studio2/resources/app/resources/win32/components/wch/toolchain/risc-v embedded gcc/riscv-none-embed/include"
+    - -isystem
+    - "d:/appdownload/mounriverstudio/mounriver_studio2/resources/app/resources/win32/components/wch/toolchain/risc-v embedded gcc/lib/gcc/riscv-none-embed/8.2.0/include"
+    - -isystem
+    - "d:/appdownload/mounriverstudio/mounriver_studio2/resources/app/resources/win32/components/wch/toolchain/risc-v embedded gcc/lib/gcc/riscv-none-embed/8.2.0/include-fixed"
+  Remove:
+    # MRS 生成但 clangd 用不上的参数
+    - -mno-save-restore
+    - -msmall-data-limit=8
+    - -fmax-errors=20
+    - -fmessage-length=0
+    - -ffunction-sections
+    - -fdata-sections
+    - -fno-common
+
+Diagnostics:
+  # 逐飞库和 MRS 生成的头文件里有大量历史代码, 别用未使用告警刷屏
+  UnusedIncludes: None
+  MissingIncludes: None
+
+InlayHints:
+  Enabled: false
+
+Hover:
+  ShowAKA: false

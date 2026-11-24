@@ -1,0 +1,29 @@
+{
+  "image": {
+    "width": 188,
+    "height": 120
+  },
+  "hooks": {
+    "init": [],
+    "frame": [],
+    "post": []
+  },
+  "pic": {
+    "dir": "",
+    "ext": "",
+    "start": 1
+  },
+  "run": {
+    "processRepeat": 1,
+    "benchRepeat": 1000
+  },
+  "toolchain": {
+    "path": "",
+    "pythonPath": "",
+    "autoWatch": true,
+    "watchExclude": "",
+    "watchMaxElems": 0
+  },
+  "inputArray": "mt9v03x_image",
+  "outputArray": ""
+}

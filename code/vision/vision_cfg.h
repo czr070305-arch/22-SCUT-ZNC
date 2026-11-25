@@ -13,6 +13,7 @@
 #ifndef VISION_CFG_H
 #define VISION_CFG_H
 
+
 // 0 selects center matching, 1 selects paired edge matching.
 #ifndef CFG_VISION_PAIRED_EDGE
 #define CFG_VISION_PAIRED_EDGE (1)
@@ -244,7 +245,40 @@
 #define CFG_ISLAND_MIN_FRAME (2)       /* 进岛后至少这么多帧才允许判退出 */   /* 2026-11-24: 10->90，进岛后必须待1.8秒才允许退出，防反复进出 */
 /* 260 帧 = 5.2s 太久。出岛判据要求 fork_rows<=1，可环里另一条边一直可见，
  * 这个条件基本不成立，只能靠兜底。改成 110 帧（2.2s）。 */
-#define CFG_ISLAND_MAX_FRAME (160)      /* 兜底：这么久还没退出就强制清状态 */   /* 2026-11-24 绕圈出不来: 110->160, 给足绕一圈时间 */
+#define CFG_ISLAND_MAX_FRAME (240)      /* 兜底超时。实测一圈 161 帧，原来 160 太紧会抢在 quiet 之前踢出；240 帧 = 9.6s 留足余量 */
+// Exit candidate thresholds in pixels, rows and frames.
+#define CFG_EXIT_HANDOFF_ENABLE (1)
+#define CFG_EXIT_MIN_RING_FRAMES (12)
+
+/* --------------------------------------------------------------------------
+ * 出口判据（2026-11-25 重做）
+ *
+ * 实测数据（651 秒遥测，真环岛段）：
+ *   入岛时   fork_rows = 17, isle_rows = 17   ← 两个值同时中等
+ *   环内     fork_rows = 14 ~ 20              ← 贴着一条边走
+ *   出口逼近 fork_rows 单调上涨 24 -> 34 -> 41 -> 46
+ *
+ * 对比误判入岛（9 次）：
+ *   入岛时 fork_rows = 63~68                   ← 一进来就是高位
+ *
+ * 所以用"fork_rows 在环内先低后高"作为出口判据，天然排除误判入岛。
+ * -------------------------------------------------------------------------- */
+/* 取值依据（实测 3.66s 真环岛）：
+ *   环内 fork 14~20 -> 出口 24(4.06s) 29(4.41s) 32(4.47s) 41(4.76s) 46(4.94s)
+ *   X_FORK=26 -> 4.24s 接管，比出岛(5.55s) 提前 1.31s
+ *   X_FORK=15 -> 入岛瞬间 fork=17 就误触发，不能用
+ * 环内先跌到 26 以下（CFG_EXIT_IN_FORK）才允许触发，排除误判入岛 */
+/* 确认环内：fork_rows 先跌到这个值以下，才认为真的开进环了。
+ * 真环岛环内 14~20，取 26 留余量。低/太晚确认；高/误判入岛确认不了。 */
+#define CFG_EXIT_IN_FORK     (26)
+/* 入岛后继续保持"咬边"的帧数。之后松开，纯靠巡线跑。
+ * 为什么松开：环岛里车贴着一条边走时，prefer_side 会持续把它往内侧拽，
+ * 导致 err 常年 80px+。松开后爬线只认"离上一帧最近的那条"，姿态自然。
+ * 出岛时外侧直线一旦进入视野，爬线的连续性会自己接上去。 */
+#define CFG_ISLE_BITE_FRAMES (25)
+#define CFG_EXIT_TOL           (10)      /* 接管后起点容差（vision_track.c 用） */
+#define CFG_EXIT_STABLE        (3)
+#define CFG_EXIT_GRACE         (12)
 #define CFG_ISLAND_QUIET     (5)        /* 双线消失连续多少帧算"出岛" */
 
 /* ==========================================================================

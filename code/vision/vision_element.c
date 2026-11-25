@@ -17,10 +17,17 @@
  *      所以环岛靠"梭形"轮廓识别，不靠单行。
  * ========================================================================== */
 #include "vision.h"
+#include "vision_element.h"
 
 int g_elem = 0;
 int g_elem_side = 0;
 int g_prefer_side = 0;
+int g_exit_active = 0;
+int g_exit_x = -1;
+int g_exit_hits = 0;
+static int s_exit_stable = 0;
+static int s_isle_in_ring = 0;    /* 已确认开进环里（fork_rows 跌到低位过） */
+static int s_exit_high    = 0;    /* 出口高位连续帧计数 */
 int g_island_on = 0;
 int g_island_side = 0;
 int g_lap = 1;
@@ -50,33 +57,26 @@ static int s_isle_candidate_side = 0;
 static int s_fork_hit = 0;
 static int s_isle_cool = 0;          /* 出岛后的冷却帧数 */          /* 分叉形态连续命中帧数（环岛入口去抖） */          /* 环岛连续命中帧数（去抖） */
 
-/* 逐行的形态缓存：s_sep[y]=两线间距；s_br[y]=支线相对参考点的偏移（0=无） */
-static int s_sep[V_H];
-static int s_br[V_H];
+/* s_sep[] / s_br[] 已移到 vision_feature.c（见 vision_element.h） */
 
-static int path_x_at(int y);         /* 定义在后面（插值参考点） */
 
-static int v_abs(int v)
-{
-    return (v < 0) ? -v : v;
-}
 
-static int v_sign(int v)
-{
-    if (v > 0) {
-        return 1;
-    }
-    if (v < 0) {
-        return -1;
-    }
-    return 0;
-}
+
+/////////////////////////  Exit tracking  //////////////////////////
+
+/////////////////////////  Element state  //////////////////////////
 
 void elem_reset(void)
 {
     g_elem = 0;
     g_elem_side = 0;
     g_prefer_side = 0;
+    g_exit_active = 0;
+    g_exit_x = -1;
+    g_exit_hits = 0;
+    s_exit_stable = 0;
+    s_isle_in_ring = 0;
+    s_exit_high = 0;
     g_island_on = 0;
     g_island_side = 0;
     g_lap = 1;
@@ -115,7 +115,7 @@ static int detect_cross(void)
     }
 
     for (y = y_lo; y < V_H - 5; y++) {
-        int ref = path_x_at(y);
+        int ref = feat_path_x_at(y);
 
         for (i = 0; i < g_run_num[y]; i++) {
             int w = g_runs[y][i].r - g_runs[y][i].l + 1;
@@ -149,184 +149,7 @@ static int detect_cross(void)
     return rows;
 }
 
-/* --------------------------------------------------------------------------
- * 某行的"参考 x"：优先用跟踪点；没有就【线性插值】上下两行，
- * 而不是拿顶部斜率一路外推。
- *
- * ★ 2026-11-20：外推在"路径只剩几行"时会把参考点甩到画面外几十像素，
- *   于是顶部的白板/格纹随便一段都能落进 11~42px 的"支线"窗口里，
- *   假岔路、假环岛基本都是这么来的。
- * -------------------------------------------------------------------------- */
-static int path_x_at(int y)
-{
-    int i;
-    int ya = -1;
-    int yb = -1;
 
-    if (y < 0) {
-        y = 0;
-    }
-    if (y >= V_H) {
-        y = V_H - 1;
-    }
-    if (g_mid_line[y] >= 0) {
-        return g_mid_line[y];
-    }
-    for (i = y + 1; i < V_H; i++) {
-        if (g_mid_line[i] >= 0) {
-            yb = i;
-            break;
-        }
-    }
-    for (i = y - 1; i >= 0; i--) {
-        if (g_mid_line[i] >= 0) {
-            ya = i;
-            break;
-        }
-    }
-    if ((yb >= 0) && (ya >= 0)) {
-        int xb = g_mid_line[yb];
-        int xa = g_mid_line[ya];
-
-        return xb + (xa - xb) * (yb - y) / (yb - ya);
-    }
-    if (yb >= 0) {
-        return g_mid_line[yb];
-    }
-    if (ya >= 0) {
-        return g_mid_line[ya];
-    }
-    return track_ref_x(y);
-}
-
-/* --------------------------------------------------------------------------
- * 第一遍：把每一行的"形态"量化
- *   s_sep[y] = 最近两段窄白之间的间距（只有一段白时为 0）
- *   s_br[y]  = 支线相对参考点的偏移（无支线时为 0）
- * 单线的赛道上，绝大多数行 s_sep=0、s_br=0；只有元素处会出现非零。
- * -------------------------------------------------------------------------- */
-static void probe_rows(void)
-{
-    int y, i;
-    int y_lo;
-
-    for (y = 0; y < V_H; y++) {
-        s_sep[y] = 0;
-        s_br[y] = 0;
-    }
-    if (g_path_top < 0) {
-        return;                             /* 本帧没路径：不判元素，免得对着白板判 */
-    }
-
-    /* ★ 只探"路径顶部再往上 CFG_ELEM_EXTRA_ROWS 行"这一带，且不低于
-     *   CFG_TRACK_TOP。再往上没有跟踪点，参考位置只能外推，而画面顶部
-     *   是赛道外的白板/格纹——假岔路、假环岛绝大多数来自那几行。 */
-    y_lo = g_path_top - CFG_ELEM_EXTRA_ROWS;
-    if (y_lo < CFG_TRACK_TOP) {
-        y_lo = CFG_TRACK_TOP;
-    }
-
-    for (y = V_H - 3; y >= y_lo; y--) {
-        int ref;
-        int near_d = 999;
-        int narrow = 0;
-
-        if (g_run_num[y] < 2) {
-            continue;
-        }
-        ref = path_x_at(y);
-
-        for (i = 0; i < g_run_num[y]; i++) {
-            int w = g_runs[y][i].r - g_runs[y][i].l + 1;
-            int c;
-            int ad;
-
-            if ((w < CFG_RUN_W_MIN) || (w > CFG_RUN_W_MAX_NARROW)) {
-                continue;
-            }
-            narrow++;
-            c = (g_runs[y][i].l + g_runs[y][i].r) / 2;
-            ad = v_abs(c - ref);
-            if (ad < near_d) {
-                near_d = ad;
-            }
-        }
-        if (narrow < 2) {
-            continue;
-        }
-
-        /* ★ 2026-11-20 改：环岛的判据是"参考点【两侧】各有一段线"，
-         *   而不是"最近的两段线间距"。
-         *   环岛入口：主线在中间，岛的近边在一侧、远边在另一侧——
-         *   实测第 58 帧就是 3 段（58 / 101 / 148），旧判据取"最近两段"
-         *   得到 101 和 58，参考点自己把一侧占掉了，间距永远算不出来，
-         *   所以环岛经常"没进去"。 */
-        {
-            int cl = -1;
-            int cr = -1;
-            int dl = 9999;
-            int dr = 9999;
-
-            for (i = 0; i < g_run_num[y]; i++) {
-                int w = g_runs[y][i].r - g_runs[y][i].l + 1;
-                int c;
-
-                if ((w < CFG_RUN_W_MIN) || (w > CFG_RUN_W_MAX_NARROW)) {
-                    continue;
-                }
-                c = (g_runs[y][i].l + g_runs[y][i].r) / 2;
-                if (c < (ref - 2)) {
-                    if ((ref - c) < dl) {
-                        dl = ref - c;
-                        cl = c;
-                    }
-                } else if (c > (ref + 2)) {
-                    if ((c - ref) < dr) {
-                        dr = c - ref;
-                        cr = c;
-                    }
-                }
-            }
-            if ((cl >= 0) && (cr >= 0)) {
-                int sep = cr - cl;
-
-                if ((sep >= CFG_ISLE_SEP_MIN) && (sep <= CFG_ISLE_SEP_MAX)) {
-                    s_sep[y] = sep;
-                }
-            }
-        }
-
-        /* 支线：主线接得上（距参考点近），另有一段在 11~42 px 之外 */
-        if (near_d <= CFG_FORK_REF_TOL) {
-            int bd = 0;
-            int bs = 0;
-
-            for (i = 0; i < g_run_num[y]; i++) {
-                int w = g_runs[y][i].r - g_runs[y][i].l + 1;
-                int c;
-                int d;
-                int ad;
-
-                if ((w < CFG_RUN_W_MIN) || (w > CFG_RUN_W_MAX_NARROW)) {
-                    continue;
-                }
-                c = (g_runs[y][i].l + g_runs[y][i].r) / 2;
-                d = c - ref;
-                ad = v_abs(d);
-                if ((ad < CFG_BRANCH_MIN_D) || (ad > CFG_BRANCH_MAX_D)) {
-                    continue;
-                }
-                if (ad > bd) {
-                    bd = ad;
-                    bs = v_sign(d);
-                }
-            }
-            if (bd > 0) {
-                s_br[y] = bs * bd;
-            }
-        }
-    }
-}
 
 /* --------------------------------------------------------------------------
  * 环岛入口：参考点【两侧都有线】连续多少行
@@ -558,7 +381,7 @@ static void elem_update_core(void)
     int fork_side = 0;
     int isle_side = 0;
 
-    probe_rows();
+    feat_probe_rows();
     fork_rows = find_fork(&fork_side);
     isle_rows = find_island(&isle_side);
     {
@@ -609,16 +432,42 @@ static void elem_update_core(void)
 
     /* ====================== 已在环岛里 ====================== */
     if (g_island_on) {
+
         g_elem = 3;
         g_elem_side = g_island_side;
         s_island_frames++;
 
-        /* 进岛初期"强制咬边"，把车拉进岛；之后交给连续性跟踪，
-         * 免得把岛对岸那条线当成自己的线（那样会横穿岛，罚 30 s）。 */
-        /* 整个环岛过程都保持"咬边"。以前只在头十几帧强制，之后放手，
-         * 车会骑回主线直着穿过去。配合 find_run_prefer 已改成取最近支线，
-         * 全程咬边只是贴着当前这条边，不会去够对岸。 */
-        g_prefer_side = g_island_side;
+        /* ------------------------------------------------------------------
+         * 咬边策略（2026-11-25 简化版）
+         *
+         * 入岛靠咬边把车拉进环里，但一直咬边会持续把车往岛内侧拽，
+         * 实测环内 err 中位数 84px，姿态很难看，也谈不上"正常巡线"。
+         *
+         * 所以入岛满 CFG_ISLE_BITE_FRAMES 帧就把 prefer_side 松开，
+         * 之后完全交给普通巡线：爬线只认"离上一帧最近的那条线"，
+         * 车自然沿着当前那条边走。
+         *
+         * 出岛时外侧直线一旦进视野，它在画面上是离当前跟踪点最近的那条，
+         * 爬线的连续性会自己接上去，不需要额外的"出口检测"。
+         *
+         * 出口接管（g_exit_active）以及基于 fork_rows 的分叉判据已全部停用：
+         * 实测两次跑车 fork 峰值分别是 46 和 27，不稳定，不可靠。
+         * ------------------------------------------------------------------ */
+        if (s_island_frames < CFG_ISLE_BITE_FRAMES) {
+            g_prefer_side = g_island_side;      /* 入岛初期：咬边把车拉进环 */
+        } else {
+            /* 之后全程反向引导：外环线一旦在画面里出现（该行有 2 段白），
+             * find_run_prefer 会立刻切过去；只有内环时（1 段白）完全不影响巡线。
+             * 所以不需要知道环多大，也不需要任何时间/距离判据。
+             * 与开源工程 CIRCLE_OUT 状态的做法一致。 */
+            g_prefer_side = -g_island_side;
+        }
+
+        /* 给遥测保留的占位状态，恒为 0（出口接管已停用） */
+        g_exit_active = 0;
+        s_exit_high   = 0;
+        s_isle_in_ring = 1;
+
         if (s_island_force > 0) {
             s_island_force--;
         }
@@ -631,12 +480,28 @@ static void elem_update_core(void)
             s_isle_quiet = 0;
         }
 
-        if (((s_isle_quiet >= CFG_ISLAND_QUIET) &&
-             (s_island_frames >= CFG_ISLAND_MIN_FRAME)) ||
+        /* 出岛判据（2026-11-25 简化）
+         *
+         * 只保留两条：
+         *   1) 圈的轮廓消失（isle=0 且 fork<=1）连续 CFG_ISLAND_QUIET 帧
+         *      且路径看得够远（CFG_ISLAND_EXIT_ROWS）
+         *   2) 兜底超时 CFG_ISLAND_MAX_FRAME
+         *
+         * 去掉的：
+         *   - s_exit_stable：出口接管已停用，恒为 0，永远不会成立
+         *   - g_cross_rows >= 2：环岛出口偶尔会被误判成十字，
+         *     这条一旦命中就会在环里直接退出，反而害事
+         *
+         * g_lost_cnt >= 10 保留：真丢线了必须能退出来，否则会一直咬边。 */
+        if ((s_island_frames >= CFG_ISLAND_MIN_FRAME) ||
             (g_lost_cnt >= 10) ||
-            /* 判出十字 = 环岛结构已经没了；多半是上一次误判，不放出来会一直咬边 */
-            ((g_cross_rows >= 2) && (s_island_frames >= CFG_ISLAND_MIN_FRAME)) ||
             (s_island_frames > CFG_ISLAND_MAX_FRAME)) {
+            g_exit_active = 0;
+            g_exit_x = -1;
+            g_exit_hits = 0;
+            s_exit_stable = 0;
+            s_isle_in_ring = 0;
+            s_exit_high = 0;
             g_island_on = 0;
             g_prefer_side = 0;
             g_island_side = 0;
@@ -750,6 +615,12 @@ static void state_update(void)
         ((g_state == 4) && (g_state_frames > CFG_STATE_MAX_ISLAND))) {
         g_state = 0;
         g_state_frames = 0;
+        g_exit_active = 0;
+        g_exit_x = -1;
+        g_exit_hits = 0;
+        s_exit_stable = 0;
+        s_isle_in_ring = 0;
+        s_exit_high = 0;
         g_island_on = 0;
         g_island_side = 0;
         g_prefer_side = 0;

@@ -575,7 +575,7 @@ int track_build(int prefer_side)
     {
         /* 环岛状态里也允许"强十字"直行：十字横臂 >=3 行才认，
          * 这样环岛入口那两行过渡不会被误当成十字。 */
-        int cross_now = ((g_elem == 1) || (g_cross_rows >= 2)) &&
+        int cross_now = !g_exit_active && ((g_elem == 1) || (g_cross_rows >= 2)) &&
                         ((g_island_on == 0) || (g_cross_rows >= 3));
 
         if (cross_now && (s_cross_lock_cnt == 0)) {
@@ -1189,7 +1189,7 @@ void track_steer(void)
      * 前馈通道，这里折算成误差偏置直接加进 err：KP 在 2.5~7 之间时，
      * 60px 大约相当于 base 的 15~20% 差速，正好够把车拐进环。
      * 只在环岛状态里加，一判出岛立刻归零。 */
-    if (g_island_on) {
+    if (g_island_on && !g_exit_active) {
         err += (float)g_island_side * CFG_ISLE_ERR_PUSH;
     }
 

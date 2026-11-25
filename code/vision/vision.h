@@ -79,6 +79,9 @@ extern int   g_lost_cnt;                            /* 连续丢线帧数 */
 extern int g_elem;              /* 0 无 / 1 十字 / 3 环岛 */
 extern int g_elem_side;         /* 分支在哪侧：-1 左 / +1 右 / 0 无 */
 extern int g_prefer_side;       /* 本帧爬线的偏好侧（0=中立） */
+extern int g_exit_active;
+extern int g_exit_x;
+extern int g_exit_hits;
 extern int g_island_on;         /* 是否处于环岛过程中 */
 extern int g_island_side;       /* 环岛走的是哪一侧 */
 extern int g_fork_rows;         /* 本帧"主线继续+分支"的行数（调试用） */

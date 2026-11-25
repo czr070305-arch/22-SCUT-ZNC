@@ -39,7 +39,7 @@ static const tune_item_t g_tune_items[TUNE_COUNT] =
     { "SLOPE",     0,   12,    1,   0, 2 },   /* 斜率权重            */
     { "TMAX",    200,   2000,    50,   0, 1800 },  /* 差速上限RPM：大=转弯半径更小 */
     { "SLOW",     50,  100,    5,   2, 85 },   /* 弯道系数 0.50~1.00 */
-    { "Speed",   600,   3000,   100,   0, 1000 },  /* 巡航RPM：直道目标轮速 */
+    { "Speed",   600,   3000,   100,   0, 1200 },  /* 巡航RPM：直道目标轮速 */
     { "THRE",    -64,   64,    4,   0, 4 },   /* 阈值 bias           */
     { "ERR_LP",    0,   95,    5,   0, 50 },   /* err 低通 0~95      */
 };
@@ -49,7 +49,6 @@ static const float g_tune_scale[TUNE_COUNT] =
 {
     0.1f, 0.1f, 1.0f, 1.0f, 1.0f, 0.01f, 1.0f, 1.0f, 0.01f
 };
-
 /* ---------- 屏幕交互状态 ---------- */
 static int   s_sel   = 0;
 static uint8 s_dirty = 0;

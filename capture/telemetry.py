@@ -33,7 +33,8 @@ except ImportError:
 
 COLS = ['tgtL', 'tgtR', 'actL', 'actR', 'outL', 'outR',
         'err', 'turn', 'spd', 'state', 'cdir', 'cruise',
-        'isle', 'fork']      # 2026-11-24 加: 环岛入口两个判据的原始值
+        'isle', 'fork', 'exit', 'exit_x', 'exit_hits', 'track_x',
+        'prefer', 'side']      # 2026-11-24 加: 环岛入口两个判据的原始值
 
 
 def main():
@@ -47,6 +48,8 @@ def main():
     ap.add_argument('--raw', action='store_true', help='打印原始行')
     ap.add_argument('--log', default='',
                     help='把每一帧写进这个 CSV 文件（一帧不丢）')
+    ap.add_argument('--island-events', action='store_true',
+                    help='Report transitions into and out of island state')
     args = ap.parse_args()
 
     try:
@@ -71,20 +74,22 @@ def main():
 
     logf = None
     if args.log:
-        logf = open(args.log, 'w', encoding='utf-8')
+        logf = open(args.log, 'w', encoding='utf-8', buffering=1)
         logf.write('t,' + ','.join(COLS) + '\n')
         print('日志写入: %s' % args.log)
 
     buf = b''
     last = None
     last_watch = None
-    t0 = time.time()
+    t0 = time.monotonic()
     nframes = 0
     nprint = 0
+    island_start = None
+    state_idx = COLS.index('state')
 
     try:
         while True:
-            if args.seconds > 0 and (time.time() - t0) > args.seconds:
+            if args.seconds > 0 and (time.monotonic() - t0) > args.seconds:
                 break
             chunk = ser.read(256)
             if not chunk:
@@ -102,19 +107,34 @@ def main():
                     continue
 
                 parts = txt.split(',')
-                if len(parts) != len(COLS):
+                if len(parts) not in (14, 18, len(COLS)):
                     continue
                 try:
                     vals = [int(p) for p in parts]
+                    if len(vals) == 14:
+                        vals.extend([-1] * (len(COLS) - len(vals)))
                 except ValueError:
                     continue
 
                 nframes += 1
-                ts_now = time.time() - t0
+                ts_now = time.monotonic() - t0
 
                 if logf is not None:
                     logf.write('%.3f,%s\n' % (ts_now,
                                                ','.join(str(v) for v in vals)))
+
+                if nframes == 1:
+                    print('First valid telemetry frame received.', flush=True)
+                if args.island_events:
+                    if vals[state_idx] == 4 and island_start is None:
+                        island_start = ts_now
+                        label = 'island active at capture start' if nframes == 1 else 'island enter'
+                        print(f'{ts_now:.3f}s {label}', flush=True)
+                    elif vals[state_idx] != 4 and island_start is not None:
+                        print(f'{ts_now:.3f}s island exit '
+                              f'(observed {ts_now - island_start:.3f}s, next state={vals[state_idx]})',
+                              flush=True)
+                        island_start = None
 
                 if watch_idx:
                     cur = tuple(vals[i] for i in watch_idx)
@@ -126,7 +146,7 @@ def main():
                     continue
                 last = vals
 
-                ts = time.time() - t0
+                ts = time.monotonic() - t0
                 print('%7.2fs %s' % (ts, ' '.join('%7d' % v for v in vals)))
                 nprint += 1
 

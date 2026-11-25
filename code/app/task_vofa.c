@@ -39,7 +39,7 @@ static int32  vofa_tgt_r     = 0;
 
 //发送缓冲
 //6 个 int32 各最长 6 字符 + 5 个逗号 + 换行 + 结束符 = 44 字节, 留 8 字节余量
-static char   vofa_tx[112];
+static char   vofa_tx[256];               /* 20 x 11 + 20 = 240, 256 safe */
 
 //==================== 字符串小工具 ====================
 
@@ -84,7 +84,7 @@ static uint8 vofa_i32_to_str(int32 v, char *buf)
 //拼一帧 FireWater 数据: v0,v1,...,v5\n
 static uint16 vofa_build_frame(void)
 {
-    int32  v[14];
+    int32  v[20];
     uint16 n = 0;
     uint8  i;
 
@@ -111,10 +111,19 @@ static uint16 vofa_build_frame(void)
     v[12] = g_isle_rows;
     v[13] = g_fork_rows;
 
-    for(i = 0; i < 14; i ++)
+    v[14] = g_exit_active;
+    v[15] = g_exit_x;
+    v[16] = g_exit_hits;
+    v[17] = g_bottom_x;
+
+    /* 2026-11-25: exit handoff debug columns */
+    v[18] = g_prefer_side;               /* 0 = bite released */
+    v[19] = g_island_side;               /* island side -1/+1 */
+
+    for(i = 0; i < 20; i ++)
     {
         n += vofa_i32_to_str(v[i], &vofa_tx[n]);
-        vofa_tx[n ++] = (i < 13) ? ',' : '\n';
+        vofa_tx[n ++] = (i < 19) ? ',' : '\n';
     }
 
     return n;

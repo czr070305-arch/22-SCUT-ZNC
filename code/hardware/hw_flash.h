@@ -8,7 +8,7 @@
 #define FLASH_PARAM_PAGE        (3)
 
 //数据有效性标志
-#define FLASH_PARAM_MAGIC       (0x54554E47)    //ASCII "TUNG", 第五版: 同步 tune.c 默认值(KP_CR=250/LOOK=40/Speed=1000)
+#define FLASH_PARAM_MAGIC       (0x54554E48)    //ASCII "TUNG", 第五版: 同步 tune.c 默认值(KP_CR=250/LOOK=40/Speed=1000)
 // 2026-11-24: 换无畸变镜头，旧 Flash 里的转向参数(KP_LN=110/KP_CR=200)
 // 是按鱼眼镜头调的，不再适用。改 MAGIC 让旧数据自动失效，
 // 上电后走 param_set_default() -> tune_load_factory()，用 tune.c 的默认值。

@@ -3,6 +3,7 @@
 #include "algorithm/ctrl.h"
 #include "hw_flash.h"
 #include "vision/vision.h"
+#include "hardware/hw_imu.h"
 
 #if (VOFA_ENABLE != 0)
 
@@ -39,7 +40,7 @@ static int32  vofa_tgt_r     = 0;
 
 //发送缓冲
 //6 个 int32 各最长 6 字符 + 5 个逗号 + 换行 + 结束符 = 44 字节, 留 8 字节余量
-static char   vofa_tx[256];               /* 20 x 11 + 20 = 240, 256 safe */
+static char   vofa_tx[512];               /* 30 列 x 12 + 30 = 390, 512 safe */
 
 //==================== 字符串小工具 ====================
 
@@ -84,7 +85,7 @@ static uint8 vofa_i32_to_str(int32 v, char *buf)
 //拼一帧 FireWater 数据: v0,v1,...,v5\n
 static uint16 vofa_build_frame(void)
 {
-    int32  v[20];
+    int32  v[33];
     uint16 n = 0;
     uint8  i;
 
@@ -120,10 +121,36 @@ static uint16 vofa_build_frame(void)
     v[18] = g_prefer_side;               /* 0 = bite released */
     v[19] = g_island_side;               /* island side -1/+1 */
 
-    for(i = 0; i < 20; i ++)
+    /* 2026-11-26 加: IMU 姿态与原始值, 供 imu_monitor.py 分析漂移
+     *   角度 x100 保留两位小数; 陀螺用 LSB 原值, 便于判断零偏量级 */
+    {
+        imu_t          ang;
+        imu_raw_struct raw;
+        uint8          ok  = hw_imu_get_angle(&ang);
+        uint8          okr = hw_imu_get_raw(&raw);
+
+        if (ok)  { ang.yaw = 0.0f; ang.pitch = 0.0f; ang.roll = 0.0f; }
+        if (okr) { raw.temp_c = 0.0f; raw.gyro[0] = 0; raw.gyro[1] = 0; raw.gyro[2] = 0; }
+
+        v[20] = (int32)(ang.yaw   * 100.0f);
+        v[21] = (int32)(ang.pitch * 100.0f);
+        v[22] = (int32)(ang.roll  * 100.0f);
+        v[23] = (int32)raw.gyro[0];
+        v[24] = (int32)raw.gyro[1];
+        v[25] = (int32)raw.gyro[2];
+        v[26] = (int32)hw_imu_calib_bias(0);
+        v[27] = (int32)hw_imu_calib_bias(1);
+        v[28] = (int32)hw_imu_calib_bias(2);
+        v[29] = (int32)(raw.temp_c * 100.0f);
+        v[30] = (int32)raw.acc[0];
+        v[31] = (int32)raw.acc[1];
+        v[32] = (int32)raw.acc[2];
+    }
+
+    for(i = 0; i < 33; i ++)
     {
         n += vofa_i32_to_str(v[i], &vofa_tx[n]);
-        vofa_tx[n ++] = (i < 19) ? ',' : '\n';
+        vofa_tx[n ++] = (i < 32) ? ',' : '\n';
     }
 
     return n;

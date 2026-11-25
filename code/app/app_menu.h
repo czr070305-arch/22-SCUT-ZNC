@@ -10,6 +10,7 @@ typedef enum
     PAGE_MAIN = 0,          //主菜单
     PAGE_TASK,              //任务列表
     PAGE_TASK_MOTOR,        //电机+编码器测试
+    PAGE_TASK_IMU,          //IMU角度测试
     PAGE_TASK_RAW,          //摄像头原画面(调镜头/曝光)
     PAGE_TASK_CAPTURE,      //图像采集(传PC做训练集)
     PAGE_TASK_TRACK,        //循迹调试(上车跑, 含视觉画面)

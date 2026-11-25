@@ -34,7 +34,10 @@ except ImportError:
 COLS = ['tgtL', 'tgtR', 'actL', 'actR', 'outL', 'outR',
         'err', 'turn', 'spd', 'state', 'cdir', 'cruise',
         'isle', 'fork', 'exit', 'exit_x', 'exit_hits', 'track_x',
-        'prefer', 'side']      # 2026-11-24 加: 环岛入口两个判据的原始值
+        'prefer', 'side',
+        # 2026-11-26 加: IMU 姿态与原始值
+        'yaw', 'pitch', 'roll', 'gx', 'gy', 'gz',
+        'bias_x', 'bias_y', 'bias_z', 'temp']
 
 
 def main():
@@ -107,7 +110,7 @@ def main():
                     continue
 
                 parts = txt.split(',')
-                if len(parts) not in (14, 18, len(COLS)):
+                if len(parts) not in (14, 18, 20, len(COLS)):
                     continue
                 try:
                     vals = [int(p) for p in parts]

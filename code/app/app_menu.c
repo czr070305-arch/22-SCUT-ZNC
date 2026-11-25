@@ -10,6 +10,7 @@
 #include "task_capture.h"
 #include "task_track.h"
 #include "task_vofa.h"
+#include "task_imu.h"
 #include "algorithm/chassis.h"
 #include "algorithm/ctrl.h"
 
@@ -64,17 +65,17 @@ static const menu_item_struct menu_main_items[] =
 {
     {"TASK TEST",   PAGE_TASK},
     {"PID / FLASH", PAGE_PARAM},
-    {"ABOUT",       PAGE_ABOUT},
 };
 #define MENU_MAIN_COUNT     (sizeof(menu_main_items) / sizeof(menu_main_items[0]))
 
 //任务列表目录
 static const menu_item_struct menu_task_items[] =
 {
+    {"TRACK",       PAGE_TASK_TRACK},
+    {"IMU TEST",    PAGE_TASK_IMU},
     {"MOTOR TEST",  PAGE_TASK_MOTOR},
     {"RAW CAM",     PAGE_TASK_RAW},
     {"CAPTURE",     PAGE_TASK_CAPTURE},
-    {"TRACK",       PAGE_TASK_TRACK},
 };
 #define MENU_TASK_COUNT     (sizeof(menu_task_items) / sizeof(menu_task_items[0]))
 
@@ -95,10 +96,11 @@ typedef struct
 
 static const page_ops_struct task_page_ops[] =
 {
+    {PAGE_TASK_TRACK,   task_track_show,   task_track_key,   task_track_run,   task_track_leave,   1, PAGE_TASK},
     {PAGE_TASK_MOTOR,   task_motor_show,   task_motor_key,   task_motor_run,   task_motor_leave,   1, PAGE_TASK},
     {PAGE_TASK_RAW,     task_raw_show,     task_raw_key,     task_raw_run,     task_raw_leave,     1, PAGE_TASK},
     {PAGE_TASK_CAPTURE, task_capture_show, task_capture_key, task_capture_run, task_capture_leave, 1, PAGE_TASK},
-    {PAGE_TASK_TRACK,   task_track_show,   task_track_key,   task_track_run,   task_track_leave,   1, PAGE_TASK},
+    {PAGE_TASK_IMU,     task_imu_show,     task_imu_key,     task_imu_run,     task_imu_leave,     1, PAGE_TASK},
     {PAGE_PARAM,        task_flash_show,   task_flash_key,   task_flash_run,   task_flash_leave,   1, PAGE_MAIN},
 };
 #define TASK_PAGE_COUNT     (sizeof(task_page_ops) / sizeof(task_page_ops[0]))
@@ -347,6 +349,7 @@ static void menu_keycut(key_id_enum id)
         case PAGE_TASK_CAPTURE:
         case PAGE_TASK_RAW:
         case PAGE_TASK_TRACK:
+        case PAGE_TASK_IMU:
         case PAGE_PARAM:
         {
             //查当前页面编号去查任务表,将查到的表项的地址存进ops

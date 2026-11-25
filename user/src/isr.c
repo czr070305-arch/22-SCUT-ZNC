@@ -34,6 +34,7 @@
 ********************************************************************************************************************/
 #include "algorithm/chassis.h"
 #include "algorithm/ctrl.h"
+#include "hardware/hw_imu.h"
 
 #include "zf_common_headfile.h"
 void NMI_Handler(void)       __attribute__((interrupt()));
@@ -357,6 +358,10 @@ void TIM6_IRQHandler(void)
     if(TIM_GetITStatus(TIM6, TIM_IT_Update) != RESET)
     {
        TIM_ClearITPendingBit(TIM6, TIM_IT_Update );
+
+       /* IMU 1ms 时基。这里只做自增，I2C 读取和 Mahony 放主循环:
+        * 软件 I2C 一次 14 字节要 315us, 放中断会挤占 DVP 行中断和速度环。 */
+       imu_tick_inc();
     }
 }
 

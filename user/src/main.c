@@ -36,6 +36,7 @@
 #include "hw_led.h"
 #include "app_menu.h"
 #include "vision/vision.h"
+#include "hardware/hw_imu.h"
 
 
 int main (void)
@@ -43,6 +44,11 @@ int main (void)
     clock_init(SYSTEM_CLOCK_120M);      // 初始化芯片时钟 工作频率为 120MHz
     debug_init();                       // 初始化调试串口
                  
+    /* IMU 必须在 app_menu_init 之前: 菜单里各页面都可能要读角度。
+     * 内部会禁 JTAG、建软 I2C、启 TIM6 1ms 时基。
+     * 失败也不停机 —— 进 IMU 页会显示 OFFLINE, 方便查接线。 */
+    hw_imu_init();
+
     app_menu_init();                    // 初始化外设，并画出主菜单
 
     while(1)
@@ -52,5 +58,9 @@ int main (void)
         /* 视觉任务: 内部判断有没有新帧, 没帧立刻返回, 不会拖慢控制。
          * 放在 app_menu_run() 之后: 菜单负责按键/UI, 视觉只补图像处理。 */
         vision_task();
+
+        /* IMU 采样 + Mahony 解算。内部按 tick 差值判断到点没有,
+         * 没到 2ms 就立刻返回。不加这一行永远拿不到角度。 */
+        hw_imu_update();
     }
 }

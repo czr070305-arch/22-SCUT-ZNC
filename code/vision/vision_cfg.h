@@ -67,7 +67,7 @@
 #define CFG_TOL_BASE         (7)        /* 搜索半宽基数（行） */
 #define CFG_TOL_GROW         (0.75f)    /* 每丢一个有效行，半宽增长多少个像素 */
 #define CFG_TOL_MAX          (26)       /* 半宽上限（再大就容易跟错线） */
-#define CFG_EXTRAP_ROWS      (9)        /* 丢线时按斜率外推的最大行数 */
+#define CFG_EXTRAP_ROWS      (14)        /* 丢线时按斜率外推的最大行数 */
 #define CFG_BLIND_ROWS       (24)       /* 允许连穿多少"盲行"（十字横臂比 9 行厚得多） */
 #define CFG_SLOPE_SMOOTH     (0.72f)    /* 斜率一阶滤波系数（越大越平滑、越迟钝） */
 
@@ -144,7 +144,7 @@
 
 /* 直角弯额外转向偏置
  * 22 时误报会猛打方向，8 影响较小 */
-#define CFG_CORNER_BIAS      (25.0f)   /* 2026-11-24: 8->25，1800RPM 下 8 太弱转不过来 */
+#define CFG_CORNER_BIAS      (20.0f)   /* 2026-11-24: 8->25，1800RPM 下 8 太弱转不过来 */
 
 
 #define CFG_CORNER_MIN_ROWS  (12)       /* 至少跟到这么多行，才敢把顶部当"折角" */
@@ -194,7 +194,7 @@
 
 
 
-#define CFG_CORNER_MIN_Y     (10)       /* 折角行至少离画面顶这么远 */
+#define CFG_CORNER_MIN_Y     (50)       /* 折角行至少离画面顶这么远 */
 #define CFG_MIN_ROWS_STEER   (10)       /* 路径短于这么多行就不更新误差（保持上一帧） */
 
 /* --------------------------------------------------------------------------

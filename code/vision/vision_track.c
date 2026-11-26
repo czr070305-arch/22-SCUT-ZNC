@@ -858,10 +858,16 @@ int track_build(int prefer_side)
                             break;
                         }
                     }
-                    if ((!above_ok) && (s_cross_after == 0) && (g_path_rows >= CFG_CORNER_MIN_ROWS) &&
+                    /* ★ 只在【近端】(y >= CFG_CORNER_MIN_Y) 判折角：
+                     *   远端看到横臂就判 -> 车还没到角就提前切弯。
+                     *   近端判时不再用“上方还有线”否决 —— 连续直角/十字旁边
+                     *   本来就有下一段赛道在上方，一否决就只能按直线外推 -> 直行丢线。 */
+                    if (((!above_ok) || (y >= CFG_CORNER_MIN_Y)) &&
+                        (s_cross_after == 0) && (g_path_rows >= CFG_CORNER_MIN_ROWS) &&
+                        (y >= CFG_CORNER_MIN_Y) &&
                         (g_elem != 1) && (g_cross_rows < 2) && (g_isle_rows == 0) &&
                         (g_fork_rows < CFG_FORK_MIN_ROWS) &&
-                        (!two_runs_above(y, pred)) &&
+                        ((!two_runs_above(y, pred)) || (y >= CFG_CORNER_MIN_Y)) &&
                         ((w <= CFG_CORNER_W_MAX) || one_side)) {
                         /* 折角：取离当前点更远的一端当作"线往哪边走"，
                          * 但只取前方 CFG_CORNER_LOOK 像素处——直接拿最远端

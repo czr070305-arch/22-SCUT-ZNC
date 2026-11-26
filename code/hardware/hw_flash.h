@@ -37,6 +37,24 @@ typedef struct{
     float r_ki;
     float r_kd;
 
+    /* ---- IMU 陀螺零偏（3 项，2026-11-26 新增） ----
+     *
+     * 存的是 hw_imu 校准得到的 s_bias（LSB，已减过的那一份）。
+     * 为什么用 int16 而不是 float:
+     *   零偏本身就是整数 LSB，范围 +/-32767 远大于实际（实测 +/-10），
+     *   int16 语义精确、省 2 字节。
+     *
+     * 为什么值得存 Flash:
+     *   MEMS 陀螺零偏是温度的函数。上电冷态校准出来的值，
+     *   等芯片发热后会偏掉（实测 30 秒内 z 从 +10 漂到 +77），
+     *   表现就是 yaw 一路漂。所以正确的用法是:
+     *     冷机上电 -> 读 Flash 旧值(有就用) -> 跑热 -> 需要时按 S1 重校
+     *   S1 校准完自动写回，下次上电就不用再等校准。
+     */
+    int16 imu_bias_x;
+    int16 imu_bias_y;
+    int16 imu_bias_z;
+
     /* ---- 转向环在线调参 ----
      *
      * 实际存储不靠这个结构体：zf 的 Flash 驱动是按
@@ -61,8 +79,18 @@ extern param_struct g_param;
 //光看 g_param 全是 0 分不清"没存过"和"存的就是 0", 得靠这个标志
 extern uint8 g_param_valid;
 
+/* Flash 里有没有可用的 IMU 零偏。
+ * 1 = 有（load 读到魔数） / 0 = 没有（要让 hw_imu 走自动校准）
+ * 和 g_param_valid 分开: 老固件写的页面里 PID 有效但零偏槽是空的。 */
+extern uint8 g_param_imu_valid;
+
 //注意: flash_param_load 必须在 chassis_init 之前调用
 //底盘初始化时要拿这里的参数去填 PID
+
+/* 写入 IMU 零偏（只改 RAM 里的 g_param，不落盘）。
+ * hw_imu_init 从 Flash 恢复零偏时调用；S1 校准完也调用，再跟 SAVE 一起落盘。
+ * 参数是 LSB 原值，范围会被夹到 int16。 */
+void  flash_param_set_imu_bias(int16 x, int16 y, int16 z);
 
 void  flash_param_load(void);
 uint8 flash_param_save(void);

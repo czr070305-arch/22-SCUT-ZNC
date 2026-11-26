@@ -384,8 +384,13 @@ static void menu_keycut(key_id_enum id)
 void app_menu_init(void)
 {
     led_init();
-    hw_key_init();                              //按键是菜单的输入
-    flash_param_load();                         //从Flash读参数, 读不到就用默认值
+    hw_key_init();
+
+    /* flash_param_load() 已挪到 main.c，在 hw_imu_init() 之前:
+     *   IMU 初始化时要用 Flash 里的零偏，比这里早。
+     * 这里不能再调一次 —— load 里会 param_set_default() 覆盖 g_param,
+     * 把 hw_imu_init 刚读进 s_bias 的零偏跟 g_param 对不上。 */
+
     chassis_init();                             //初始化底盘: 电机 + 编码器 + 启动速度环节拍
     ctrl_init();                                //循迹控制层: 转向环 + 巡航速度
     ui_hardware_init();                         //屏幕初始化(内部有长延时, 只能调用一次)

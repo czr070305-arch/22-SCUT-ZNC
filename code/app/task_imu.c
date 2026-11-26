@@ -1,6 +1,7 @@
 #include "task_imu.h"
 #include "app_ui.h"
 #include "hardware/hw_imu.h"
+#include "hardware/hw_flash.h"    /* 校准完自动写 Flash */
 
 /* ============================================================================
  * IMU 角度测试页
@@ -198,9 +199,6 @@ void task_imu_show(void)
         ui_draw_footer_line(1, "L:Back");
         return;
     }
-
-    ui_draw_footer_line(0, "S1:Calib S2:Yaw0");
-    ui_draw_footer_line(1, "L:Back");
 }
 
 void task_imu_key(key_id_enum id)
@@ -244,9 +242,34 @@ void task_imu_run(void)
     {
         if (hw_imu_calib_poll())
         {
+            /* 校准完成: 把新零偏交给 g_param，然后立刻落盘。
+             *
+             * 为什么自动存:
+             *   零偏是温度的函数。这次是热平衡后校的，值最可信；
+             *   如果只放 RAM，下次上电又回到冷态自动校准，等于白校。
+             *   自动落盘后，下次上电直接读，跳过 350ms 校准。
+             *
+             * 为什么要提示用户:
+             *   Flash 写入约 10ms，期间按键/刷新都会停。
+             *   给一行 SAVED 让用户知道刚才那一下真的写进去了。 */
+            int16 b[3];
+            uint8 err;
+
+            hw_imu_bias_get(b);
+            flash_param_set_imu_bias(b[0], b[1], b[2]);
+            err = flash_param_save();
+
             imu_calibrating = 0;
             imu_draw_title();
-            ui_draw_footer_line(0, "S1:Calib S2:Yaw0");
+
+            if (0 == err)
+            {
+                ui_draw_footer_line(0, "CALIB SAVED TO FLASH");
+            }
+            else
+            {
+                ui_draw_footer_line(0, "SAVE FAILED (retry S1)");
+            }
         }
         imu_draw_calib_bar();
         return;

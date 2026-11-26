@@ -37,6 +37,7 @@
 #include "app_menu.h"
 #include "vision/vision.h"
 #include "hardware/hw_imu.h"
+#include "hardware/hw_flash.h"
 
 
 int main (void)
@@ -44,8 +45,15 @@ int main (void)
     clock_init(SYSTEM_CLOCK_120M);      // 初始化芯片时钟 工作频率为 120MHz
     debug_init();                       // 初始化调试串口
                  
+    /* flash_param_load 必须先跑: 它从 Flash 读出 PID 参数和 IMU 零偏。
+     * hw_imu_init 要用 g_param_imu_valid 判断"有没有存过零偏"，
+     * 放反了就会读到全 0 的 g_param，白白多校一次。
+     * 原来这一步在 app_menu_init 里，提前到这里。 */
+    flash_param_load();
+
     /* IMU 必须在 app_menu_init 之前: 菜单里各页面都可能要读角度。
      * 内部会禁 JTAG、建软 I2C、启 TIM6 1ms 时基。
+     * 零偏优先用 Flash 里的，没有才现场校准。
      * 失败也不停机 —— 进 IMU 页会显示 OFFLINE, 方便查接线。 */
     hw_imu_init();
 

@@ -1,4 +1,5 @@
 #include "hw_imu.h"
+#include "hw_flash.h"     /* g_param / g_param_imu_valid: 零偏存取 */
 
 /* ============================================================================
  * hw_imu.c --- ICM-42688-P 驱动实现（软件 I2C）
@@ -149,13 +150,34 @@ uint8 hw_imu_init(void)
      *    之后所有角度都是 NaN，屏幕上显示 0.00 但永远不动。 */
     mahony_init();
 
-    /* 10. 自动零偏校准。上电这一刻车必然是静止的（还没发车），
-     *     直接采 500 个样把零偏扣掉，省掉手动按 S1。
-     *     这 300 多毫秒阻塞换来的是 yaw 静止不漂，值得。
-     *     S1 保留，用于运行中温度变化后重新校准。 */
-    hw_imu_calib_start();
-    while (!hw_imu_calib_poll())
+    /* 10. 零偏优先级:
+     *   1) Flash 里手动存过的（用户按 S1 + SAVE）
+     *   2) 编译进固件的默认值 IMU_DEFAULT_BIAS_*
+     *
+     * 不再做上电自动校准。
+     *
+     * 为什么去掉自动校准:
+     *   校准要求上电那一刻车完全静止。实际做不到 ——
+     *   上电瞬间手还扶着车、或者刚从包里拿出来，
+     *   校出来的值每次都不一样，差的时候漂 1 度/秒以上。
+     *   固定默认值反而稳定：同一颗芯片同温度下零偏是物理常数。
+     *
+     * 为什么烧录后能直接用:
+     *   MRS 烧录会整片擦除 Flash（wvproj 里 erase=true），
+     *   Flash 里存的零偏没了，于是回落到这里的默认值。
+     *   默认值就是最优的那组，所以烧录完直接能跑。
+     */
+    if (g_param_imu_valid)
     {
+        s_bias[0] = g_param.imu_bias_x;
+        s_bias[1] = g_param.imu_bias_y;
+        s_bias[2] = g_param.imu_bias_z;
+    }
+    else
+    {
+        s_bias[0] = IMU_DEFAULT_BIAS_X;
+        s_bias[1] = IMU_DEFAULT_BIAS_Y;
+        s_bias[2] = IMU_DEFAULT_BIAS_Z;
     }
 
     /* 11. 启动 1ms 时基。放在最后：前面任何一步失败就直接返回，
@@ -299,6 +321,20 @@ int16 hw_imu_calib_bias(uint8 axis)
         return 0;
     }
     return s_bias[axis];
+}
+
+/* 取当前生效的三个零偏，给 task 层"校准完存 Flash"用。
+ * 和 hw_imu_calib_bias(0/1/2) 等价，但一次拷出三个，
+ * 免得调用方写三次带下标的调用。 */
+void hw_imu_bias_get(int16 out[3])
+{
+    if (out == 0)
+    {
+        return;
+    }
+    out[0] = s_bias[0];
+    out[1] = s_bias[1];
+    out[2] = s_bias[2];
 }
 
 //==================== 安装方向补偿 ====================

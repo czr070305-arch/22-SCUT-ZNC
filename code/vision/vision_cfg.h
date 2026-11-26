@@ -195,7 +195,7 @@
 
 
 #define CFG_CORNER_MIN_Y     (10)       /* 折角行至少离画面顶这么远 */
-#define CFG_MIN_ROWS_STEER   (10)       /* 路径短于这么多行就不更新误差（保持上一帧） */
+#define CFG_MIN_ROWS_STEER   (5)       /* 路径短于这么多行就不更新误差（保持上一帧） */
 
 /* --------------------------------------------------------------------------
  * 五、元素识别与两圈策略
@@ -245,7 +245,7 @@
 #define CFG_ISLAND_MIN_FRAME (2)       /* 进岛后至少这么多帧才允许判退出 */   /* 2026-11-24: 10->90，进岛后必须待1.8秒才允许退出，防反复进出 */
 /* 260 帧 = 5.2s 太久。出岛判据要求 fork_rows<=1，可环里另一条边一直可见，
  * 这个条件基本不成立，只能靠兜底。改成 110 帧（2.2s）。 */
-#define CFG_ISLAND_MAX_FRAME (240)      /* 兜底超时。实测一圈 161 帧，原来 160 太紧会抢在 quiet 之前踢出；240 帧 = 9.6s 留足余量 */
+#define CFG_ISLAND_MAX_FRAME (600)      /* 兜底超时。实测一圈 161 帧，原来 160 太紧会抢在 quiet 之前踢出；240 帧 = 9.6s 留足余量 */
 // Exit candidate thresholds in pixels, rows and frames.
 #define CFG_EXIT_HANDOFF_ENABLE (1)
 #define CFG_EXIT_MIN_RING_FRAMES (12)
@@ -275,7 +275,7 @@
  * 为什么松开：环岛里车贴着一条边走时，prefer_side 会持续把它往内侧拽，
  * 导致 err 常年 80px+。松开后爬线只认"离上一帧最近的那条"，姿态自然。
  * 出岛时外侧直线一旦进入视野，爬线的连续性会自己接上去。 */
-#define CFG_ISLE_BITE_FRAMES (25)
+#define CFG_ISLE_BITE_FRAMES   (150)
 #define CFG_EXIT_TOL           (10)      /* 接管后起点容差（vision_track.c 用） */
 #define CFG_EXIT_STABLE        (3)
 #define CFG_EXIT_GRACE         (12)
@@ -398,7 +398,7 @@
 /* 分叉形态持续这么多行才当环岛入口。
  * 10 行太松：直角弯的另一条腿在画面里也能撑到 20 多行（82 帧实测 23~49），
  * 于是每个弯都会被当成环岛。抬到 18，并要求连续帧确认（CFG_FORK_CONFIRM）。 */
-#define CFG_ISLE_ENTRY_ROWS   (60)   /* 2026-11-24 环岛太早转: 14->22, 分叉入口门槛抬高 */
+#define CFG_ISLE_ENTRY_ROWS   (50)   /* 2026-11-24 环岛太早转: 14->22, 分叉入口门槛抬高 */
 #define CFG_FORK_CONFIRM      (2)     /* 分叉/hit 必须连续这么多帧 */
 
 /* 出岛后的冷却帧数：这段时间内不再接受新的环岛入口。
@@ -464,7 +464,7 @@
  * 8 像素约等于一个线宽，太小会被爬线噪声带偏。 */
 #define CFG_ISLE_SIDE_MIN_PX   (8)
 
-#define CFG_ISLE_ERR_PUSH    (35.0f)
+#define CFG_ISLE_ERR_PUSH    (10.0f)
 
 
 /* 状态机超时（帧，50fps）。超时强制回普通状态，防卡死
@@ -473,7 +473,7 @@
  *   一直不清，车就会永远走"咬边"逻辑。超时是最后一道保险。 */
 #define CFG_STATE_MAX_CORNER (30)
 #define CFG_STATE_MAX_CROSS  (40)
-#define CFG_STATE_MAX_ISLAND (250)
+#define CFG_STATE_MAX_ISLAND (1000)
 
 /* 元素里的速度系数（%）
  *

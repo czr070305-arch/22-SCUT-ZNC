@@ -1,4 +1,5 @@
 #include "task_vofa.h"
+#include "algorithm/island.h"
 #include "algorithm/chassis.h"
 #include "algorithm/ctrl.h"
 #include "hw_flash.h"
@@ -40,7 +41,7 @@ static int32  vofa_tgt_r     = 0;
 
 //发送缓冲
 //6 个 int32 各最长 6 字符 + 5 个逗号 + 换行 + 结束符 = 44 字节, 留 8 字节余量
-static char   vofa_tx[512];               /* 30 列 x 12 + 30 = 390, 512 safe */
+static char   vofa_tx[512];               /* 37 col x 12 + 37 = 481, 512 safe */
 
 //==================== 字符串小工具 ====================
 
@@ -85,7 +86,7 @@ static uint8 vofa_i32_to_str(int32 v, char *buf)
 //拼一帧 FireWater 数据: v0,v1,...,v5\n
 static uint16 vofa_build_frame(void)
 {
-    int32  v[33];
+    int32  v[37];
     uint16 n = 0;
     uint8  i;
 
@@ -147,10 +148,30 @@ static uint16 vofa_build_frame(void)
         v[32] = (int32)raw.acc[2];
     }
 
-    for(i = 0; i < 33; i ++)
+    /* 2026-11-26 加: 环岛状态机调试列
+     *
+     *   v[33] 状态        0=IDLE 1=RUNNING 2=AFTER(yaw锁朝向)
+     *   v[34] Δyaw x100   相对入环起点的已转角度(度 x100)，-18000~+18000
+     *   v[35] armed       1 = 已转过 60 度，允许判出岛了
+     *   v[36] island_on   视觉这一帧报的进环标志
+     *
+     * 调参时怎么看:
+     *   进环瞬间   v[33] 0->1，v[34] 从 0 开始，速度降到 75%
+     *   转过 60°   v[35] 0->1
+     *   转到 180°  v[34] 接近 ±18000
+     *   回到起点   |v[34]| < 2500 且 v[35]=1 -> 出岛，v[33] 变 2
+     *   AFTER 阶段  v[34] 应该收敛到 0 附近（yaw 锁朝向生效）
+     *               250ms 后 v[33] 回 0，交回视觉
+     */
+    v[33] = (int32)island_get_state();
+    v[34] = (int32)(island_get_delta_yaw() * 100.0f);
+    v[35] = (int32)island_is_exit_armed();
+    v[36] = (int32)g_island_on;
+
+    for(i = 0; i < 37; i ++)
     {
         n += vofa_i32_to_str(v[i], &vofa_tx[n]);
-        vofa_tx[n ++] = (i < 32) ? ',' : '\n';
+        vofa_tx[n ++] = (i < 36) ? ',' : '\n';
     }
 
     return n;

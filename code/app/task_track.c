@@ -4,6 +4,7 @@
 #include "algorithm/chassis.h"
 #include "algorithm/ctrl.h"
 #include "algorithm/tune.h"
+#include "algorithm/island.h"
 #include "task_vofa.h"
 
 #include "vision/vision.h"
@@ -543,6 +544,27 @@ void task_track_run(void)
      * （按键 / 恢复默认 / 上电载入），视觉阈值都在下一圈跟上，
      * 不会再出现"屏幕显示 20、实际还是 4"的情况。 */
     VIS_BIAS_SET((int)tune_get(TUNE_THRE_BIAS));
+
+    /* ---- 环岛状态机：视觉 <-> 控制的桥 ----
+     *
+     * 两个方向的数据:
+     *   1) 视觉 -> 状态机: "我在环里" + 左/右。
+     *      状态机只在 IDLE 时拿它记 yaw 起点，进环后自己管退出。
+     *   2) 状态机 -> 视觉: "我判出岛了"。
+     *      取走请求并调 vision_island_exit()，让视觉清掉咬线状态。
+     *
+     * 为什么放主循环而不是 ctrl_tick:
+     *   vision_island_exit() 会改一堆视觉全局量，
+     *   在 TIM7 中断里改会和主循环的图像处理打架（撕裂读）。
+     *   这里改，和视觉处理同在主循环，天然互斥。
+     */
+    island_set_vision_on(VIS_OUT->island_on);
+    island_set_side(VIS_OUT->elem_side);
+
+    if (island_take_exit_request())
+    {
+        vision_island_exit();
+    }
 
     //---- 喂视觉误差 ----
     //每圈都喂, 即使停车也喂: 让视觉始终跑着, 启动时第一帧就有数据

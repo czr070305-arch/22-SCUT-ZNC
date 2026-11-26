@@ -2,7 +2,7 @@
 """
 IMU 实时监测 + 漂移分析
 
-固件从 DEBUG_UART(UART3, PB10) 每 10ms 发一帧 CSV，共 30 列。
+固件从 DEBUG_UART(UART3, PB10) 每 10ms 发一帧 CSV，共 37 列。
 本脚本抓最近 20 列里的 IMU 部分，实时显示，并在结束时给出漂移统计。
 
 列定义（0 起）：
@@ -19,6 +19,10 @@ IMU 实时监测 + 漂移分析
     30 ax            加速度 X 原始值 LSB
     31 ay
     32 az
+    33 ist           环岛状态 0=IDLE 1=RUNNING 2=DONE
+    34 dyaw_x100     相对入环起点的已转角度 x100（度）
+    35 arm           1 = 已转过 60 度，允许判出岛
+    36 ion           视觉 island_on
 
 用法:
     py -3 capture/imu_monitor.py -p COM11
@@ -37,7 +41,7 @@ except ImportError:
     sys.exit(1)
 
 
-TOTAL_COLS = 33
+TOTAL_COLS = 37
 
 # 索引 -> (名字, 显示宽度, 缩放)
 IMU_COLS = [
@@ -54,9 +58,14 @@ IMU_COLS = [
     (30, 'ax',    7, 1.0),
     (31, 'ay',    7, 1.0),
     (32, 'az',    7, 1.0),
+    # 2026-11-26 环岛状态机调试列
+    (33, 'ist',   4, 1.0),   # 0=IDLE 1=RUNNING 2=AFTER(yaw锁朝向)
+    (34, 'dyaw',  8, 0.01),  # 相对入环起点的已转角度（度）
+    (35, 'arm',   4, 1.0),   # 1=已过 60 度门限
+    (36, 'ion',   4, 1.0),   # 视觉 island_on
 ]
 
-LIVE  = {'yaw', 'pitch', 'roll', 'gz', 'temp'}
+LIVE  = {'yaw', 'pitch', 'roll', 'gz', 'temp', 'ist', 'dyaw'}
 
 
 def judge_mount(ax, ay, az):

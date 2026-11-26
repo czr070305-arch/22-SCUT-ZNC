@@ -154,7 +154,7 @@
  * 反复喂同一个 err 会让积分持续累加(windup). */
 #define CTRL_LOST_HOLD_MS       (300)
 #define CTRL_LOST_HOLD_SLOW     (1.0f)
-#define CTRL_LOST_STOP_MS       (600)
+#define CTRL_LOST_STOP_MS       (3000)
 #define CTRL_LOST_SLOW_RATIO    (1.0f)
 
 /* 起步斜坡 (ms)

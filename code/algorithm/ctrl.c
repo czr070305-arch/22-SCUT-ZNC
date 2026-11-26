@@ -1,6 +1,7 @@
 #include "ctrl.h"
 #include "pid.h"
 #include "chassis.h"
+#include "island.h"
 
 /*
  * 符号约定速查 (改代码前先看 ctrl.h 顶部那段)
@@ -62,6 +63,10 @@ void ctrl_init(void)
     //      但将来为了消除直道偏置打开 Ki 时, err_sum 已经累到几十万,
     //      一启 I 项就会瞬间打出一个巨大的转向量, 车会直接甩出去.
     //      提前限住, 以后开 I 才安全.
+    /* 环岛状态机复位。放在 PID_Init 之前，
+     * 保证任何控制参数变动都不会留下半个环岛状态。 */
+    island_init();
+
     PID_Init(&ctrl_turn_pid,
              CTRL_TURN_KP_INIT, 0.0f, 0.0f,
              (float)g_tune[TUNE_TURN_MAX], CTRL_TURN_INT_MAX, CTRL_TURN_DEAD_ZONE,
@@ -253,8 +258,26 @@ void ctrl_tick(void)
         }
     }
 
-    //---- 1) 速度规划 (丢线时也要, 所以先算) ----
+    /* ---- 0.5) 环岛状态机 ----
+     *
+     * 放在这里而不是 ctrl_set_error() 里:
+     *   ctrl_set_error 由主循环每帧(约 20ms)调, 而环岛判据需要稳定节拍。
+     *   这里由 TIM7 每 4ms 调一次, 计时器 s_running_ms 才准。
+     *
+     * 放在状态判断之后而不是之前:
+     *   IDLE/STOPPED 已经 return 了, 车都没跑, 不需要推进环岛状态。
+     *
+     * 它只读 yaw、写内部状态, 不碰 moto 输出。
+     * 出岛请求由 task_track 主循环取走并转告视觉。
+     */
+    island_tick();
+
+    //---- 1) 速度规划 (丢线时也要, 否则会超速) ----
     base = ctrl_cruise;
+    /* 环岛速度缩放：RUNNING 75%、AFTER 85%->100%。
+     * 视觉的 g_speed_pct 从来没接到这里过，环岛降速一直是断的，
+     * 这里把它补上。 */
+    base *= island_get_speed_scale();
 
 
     //---- 2) 丢线判定与转向决策 ----
@@ -340,6 +363,33 @@ void ctrl_tick(void)
     /* PID 输出兜底: KP/KI/KD 万一被 VOFA 设成异常值, 或者 err 里
      * 混进了 NaN, turn 可能就是脏的. 这里再挡一次, 保证下发给底盘的
      * 一定是有限数. */
+    /* ---- 3.5) 环岛出岛转向覆盖（学学长 CMD_AFTER）----
+     *
+     * 出岛后 250ms 内，视觉看到的是环岛出口的弧线，err 会指向弧线方向。
+     * 这段时间改用 yaw 闭环把车头拉回"入环前的朝向"，直行穿出去。
+     *
+     * 混合权重 w：
+     *   0   = 纯视觉（正常巡线 / 环内）
+     *   1   = 纯 yaw 锁定（出岛中）
+     * yaw_turn 自己会在最后 100ms 线性衰减，所以交接是连续的。
+     */
+    {
+        float yaw_turn = 0.0f;
+        float w = island_get_turn_blend(&yaw_turn);
+
+        if (w > 0.0f)
+        {
+            if (w >= 1.0f)
+            {
+                turn = yaw_turn;            /* 纯 yaw 锁定 */
+            }
+            else
+            {
+                turn = turn * (1.0f - w) + yaw_turn * w;
+            }
+        }
+    }
+
     if(!(turn == turn))
     {
         turn = 0.0f;

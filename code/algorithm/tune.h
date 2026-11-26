@@ -51,7 +51,7 @@
  */
 
 /* 参数个数。加参数：改这里 + tune.c 的 g_tune_items[] + 下面编号宏 */
-#define TUNE_COUNT              (9)
+#define TUNE_COUNT              (10)
 
 /* ---------- 参数编号（即 tune_get 的下标） ---------- */
 #define TUNE_KP_LO              (0)     /* 直线 P */
@@ -63,6 +63,7 @@
 #define TUNE_CRUISE             (6)     /* 巡航 RPM */
 #define TUNE_THRE_BIAS          (7)     /* 二值化阈值偏置 */
 #define TUNE_ERR_LP             (8)     /* err 低通强度 0~95，0=关闭 */
+#define TUNE_ISLE_ROWS          (9)     /* 环岛入口分叉行数门槛（原 CFG_ISLE_ENTRY_ROWS） */
 
 /* ---------- 当前生效值（控制层直接读） ---------- */
 extern int32 g_tune[TUNE_COUNT];

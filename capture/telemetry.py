@@ -37,7 +37,10 @@ COLS = ['tgtL', 'tgtR', 'actL', 'actR', 'outL', 'outR',
         'prefer', 'side',
         # 2026-11-26 加: IMU 姿态与原始值
         'yaw', 'pitch', 'roll', 'gx', 'gy', 'gz',
-        'bias_x', 'bias_y', 'bias_z', 'temp']
+        'bias_x', 'bias_y', 'bias_z', 'temp',
+        'ax', 'ay', 'az',
+        # 2026-11-26 加: 环岛状态机
+        'ist', 'dyaw', 'arm', 'ion']
 
 
 def main():

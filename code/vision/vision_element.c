@@ -18,6 +18,7 @@
  * ========================================================================== */
 #include "vision.h"
 #include "vision_element.h"
+#include "algorithm/tune.h"    /* tune_get: 可现场调的环岛门槛 */
 
 int g_elem = 0;
 int g_elem_side = 0;
@@ -95,6 +96,43 @@ void elem_reset(void)
     g_state = 0;
     g_state_frames = 0;
     g_speed_pct = 100;
+}
+
+/* --------------------------------------------------------------------------
+ * 环岛退出（控制层调用）
+ * --------------------------------------------------------------------------
+ * 何时调用:
+ *   algorithm/island.c 用陀螺 yaw 判定"已绕过一圈"后，
+ *   task_track.c 每帧检查 island_take_exit_request()，读到就调这里。
+ *
+ * 做什么:
+ *   把环岛相关的状态全部清干净，等价于自然走到超时分支。
+ *   清完后 g_prefer_side 归 0，视觉回到普通巡线，
+ *   下一帧 track_build() 就会按双边线重新算中线。
+ *
+ * 为什么要外部触发而不是视觉自己判:
+ *   "绕了多远"是惯性量，图像只能看到脚下几行线。
+ *   环岛里视野遮挡严重，凭图像判断何时出岛不可靠 ——
+ *   实测环内 err 幅值 84px，视觉自己都稳不住。
+ * -------------------------------------------------------------------------- */
+void vision_island_exit(void)
+{
+    g_island_on    = 0;
+    g_island_side  = 0;
+    g_prefer_side  = 0;
+    s_island_frames = 0;
+    s_isle_quiet   = 0;
+    s_island_force = 0;
+    s_isle_in_ring = 0;
+    s_exit_high    = 0;
+    s_exit_stable  = 0;
+    g_exit_active  = 0;
+    g_exit_x       = -1;
+    g_exit_hits    = 0;
+
+    /* 冷却，防止刚出环又被自己识别进去 */
+    s_isle_cool = CFG_ISLE_COOLDOWN;
+    s_cd        = CFG_ELEM_CD;
 }
 
 /* --------------------------------------------------------------------------
@@ -382,8 +420,8 @@ static void elem_update_core(void)
     int isle_side = 0;
 
     feat_probe_rows();
-    fork_rows = find_fork(&fork_side);
-    isle_rows = find_island(&isle_side);
+    fork_rows = find_fork(&fork_side);      //找分叉特征
+    isle_rows = find_island(&isle_side);    //找环特征
     {
         int sep_run = count_sep_run();
 
@@ -406,12 +444,29 @@ static void elem_update_core(void)
 
     /* 元素去抖：单帧误判会让 g_prefer_side 突然打向一边（车抽一下），
      * 所以要求连续几帧都判出来。 */
-    if ((g_cross_rows < 2) && (fork_rows >= CFG_ISLE_ENTRY_ROWS)) {
+    if ((g_cross_rows < 2) && (fork_rows >= (int)tune_get(TUNE_ISLE_ROWS))) {
         if (s_fork_hit < 1000) {
             s_fork_hit++;
         }
     } else {
-        s_fork_hit = 0;
+        /* 漏一帧不清零，扣一分（2026-11-26 改）
+         *
+         * 原代码是 s_fork_hit = 0，硬清零。
+         * 问题：高速通过入口时特征会在阈值附近抖动，
+         * 序列变成 1,0,1,0,1,0...，永远到不了 CFG_FORK_CONFIRM=2，
+         * 车就直接开过去了（"速度快路过环岛不进去"）。
+         *
+         * 改成扣分制后：
+         *   帧序列 1,0,1,0,1  => 分数 1,0,1,0,1
+         *   帧序列 1,1,0,1,1  => 分数 1,2,1,2,3  能确认
+         * 只要"满足的帧比不满足的多"，就能累积到阈值。
+         *
+         * 为什么用 -1 而不是衰减：
+         *   衰减(如 x0.8)会让分数永远达不到整数阈值，行为不直观。
+         *   每次漏帧扣 1，语义清晰：净胜 2 帧即可确认。 */
+        if (s_fork_hit > 0) {
+            s_fork_hit--;
+        }
     }
     // 十字帧中断环岛确认，方向变化时从当前帧重新累计
     if ((g_cross_rows < 2) && (isle_rows >= CFG_ISLE_MIN_ROWS)) {
@@ -423,8 +478,15 @@ static void elem_update_core(void)
             s_isle_hit++;
         }
     } else {
-        s_isle_hit = 0;
-        s_isle_candidate_side = 0;
+        /* 同上：漏帧扣分，不硬清零。
+         *
+         * 侧向（s_isle_candidate_side）也不再清 ——
+         * 环岛入口那几帧 isle_side 左右翻是常见的（分叉特征在两侧都认），
+         * 每次翻都重置 s_isle_hit 等于把累积全扔掉。
+         * 侧向变了在上面的 if 里已经重置过了，这里不必再动。 */
+        if (s_isle_hit > 0) {
+            s_isle_hit--;
+        }
     }
 
     g_elem = 0;
@@ -460,7 +522,7 @@ static void elem_update_core(void)
              * find_run_prefer 会立刻切过去；只有内环时（1 段白）完全不影响巡线。
              * 所以不需要知道环多大，也不需要任何时间/距离判据。
              * 与开源工程 CIRCLE_OUT 状态的做法一致。 */
-            g_prefer_side = -g_island_side;
+            g_prefer_side = 0;
         }
 
         /* 给遥测保留的占位状态，恒为 0（出口接管已停用） */
@@ -493,8 +555,19 @@ static void elem_update_core(void)
          *     这条一旦命中就会在环里直接退出，反而害事
          *
          * g_lost_cnt >= 10 保留：真丢线了必须能退出来，否则会一直咬边。 */
-        if ((s_island_frames >= CFG_ISLAND_MIN_FRAME) ||
-            (g_lost_cnt >= 10) ||
+        /* 出岛判据（2026-11-26 降级为兜底）
+         *
+         * 真正负责出岛的是控制层 algorithm/island.c：它用陀螺 yaw
+         * 算"相对入环起点转了多少度"，转到 360 度附近就调
+         * vision_island_exit() 通知这里退出。
+         *
+         * 这里只保留兜底，防止控制层失效时车永远卡在环岛状态：
+         *   1) 长时间丢线（g_lost_cnt >= 10）  —— 视觉自己已经瞎了
+         *   2) 帧数超时（CFG_ISLAND_MAX_FRAME）—— 控制层没反应
+         *
+         * 删掉 s_island_frames >= CFG_ISLAND_MIN_FRAME 这条：
+         *   那个值现在是 2，等于"进环 2 帧就退出"，会把正常环岛掐断。 */
+        if ((g_lost_cnt >= 30) ||
             (s_island_frames > CFG_ISLAND_MAX_FRAME)) {
             g_exit_active = 0;
             g_exit_x = -1;
@@ -537,7 +610,8 @@ static void elem_update_core(void)
      * ------------------------------------------------------------------ */
     if ((CFG_NO_FORK != 0) && (g_cross_rows < 2) && (s_cd == 0) && (g_island_on == 0) &&
         (s_isle_cool == 0) &&
-        (fork_rows >= CFG_ISLE_ENTRY_ROWS) && (s_fork_hit >= CFG_FORK_CONFIRM)) {
+        (fork_rows >= (int)tune_get(TUNE_ISLE_ROWS)) &&
+        (s_fork_hit >= CFG_FORK_CONFIRM)) {
         island_enter(fork_side);
         return;
     }
